@@ -264,7 +264,8 @@ class Mask(nn.Module):
                     m_out.append(mask[i].clamp_min(atten_lim[i].item()))
                 mask = torch.stack(m_out, dim=0)
         mask = mask.matmul(self.erb_inv_fb)  # [B, 1, T, F]
-        if not spec.is_complex():
+        # if not spec.is_complex():
+        if True:       # spec is not complex
             mask = mask.unsqueeze(4)
         return spec * mask
 
