@@ -245,8 +245,38 @@ def enhance(
         audio = F.pad(audio, (0, n_fft))
     nb_df = getattr(model, "nb_df", getattr(model, "df_bins", ModelParams().nb_df))
     spec, erb_feat, spec_feat = df_features(audio, df_state, nb_df, device=get_device())
+####
+    spec_arr = torch.split(spec, 1, 2)
+    erb_feat_arr = torch.split(erb_feat, 1, 2)
+    spec_feat_arr = torch.split(spec_feat, 1, 2)
+    print("spec_arr = {} spec_arr[0] = {}".format(len(spec_arr), spec_arr[0].size()))
+
+    print("spec shape = ", spec.size())
+    print("erb_feat shape = ", erb_feat.size())
+    print("spec_feat shape = ", spec_feat.size())
+
+    audio_list = []
+    for idx in range(len(spec_arr)):
+        cur_ehc = model(spec_arr[idx].clone(), erb_feat_arr[idx], spec_feat_arr[idx])[0].cpu()
+        cur_ehc = as_complex(cur_ehc.squeeze(1))
+        if atten_lim_db is not None and abs(atten_lim_db) > 0:
+            lim = 10 ** (-abs(atten_lim_db) / 20)
+            cur_ehc = as_complex(spec_arr[idx].squeeze(1).cpu()) * lim + cur_ehc * (1 - lim)
+        cur_audio = torch.as_tensor(df_state.synthesis(cur_ehc.numpy()))
+        # print("cur audio size = ", cur_audio.size())
+        audio_list.append(cur_audio)
+
+    audio = torch.cat(audio_list, dim=1)
+    print("+++++++++++", audio.size())
+    return audio
+####
+    
     enhanced = model(spec.clone(), erb_feat, spec_feat)[0].cpu()
+    print("enhanced shape = ", enhanced.size(), type(enhanced))
+
+
     enhanced = as_complex(enhanced.squeeze(1))
+    print("enhanced squeeze 1 shape = ", enhanced.size())
     if atten_lim_db is not None and abs(atten_lim_db) > 0:
         lim = 10 ** (-abs(atten_lim_db) / 20)
         enhanced = as_complex(spec.squeeze(1).cpu()) * lim + enhanced * (1 - lim)
@@ -259,6 +289,7 @@ def enhance(
         assert n_fft % hop == 0  # This is only tested for 50% and 75% overlap
         d = n_fft - hop
         audio = audio[:, d : orig_len + d]
+    print("audio size = ", audio.size())
     return audio
 
 

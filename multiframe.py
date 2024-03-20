@@ -178,8 +178,9 @@ class DF(MultiFrameModule):
         spec_f = spec_u.narrow(-2, 0, self.num_freqs)
         # zhouyu add 为了让 fx 可以通过，选择特定的音频作为输入
         # print(coefs.shape)  # torch.Size([1, 5, 102, 96])
-        # coefs = coefs.view(coefs.shape[0], -1, self.frame_size, *coefs.shape[2:])
-        coefs = coefs.view(1, -1, self.frame_size, 102, 96)
+        coefs = coefs.view(coefs.shape[0], -1, self.frame_size, *coefs.shape[2:])
+        # coefs = coefs.view(1, -1, self.frame_size, 102, 96)
+        # coefs = coefs.view(1, -1, self.frame_size, 1, 96)
         if self.conj:
             coefs = coefs.conj()
         spec_f = df(spec_f, coefs)
