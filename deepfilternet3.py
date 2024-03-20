@@ -267,13 +267,13 @@ class DfOutputReshapeMF(nn.Module):
 
     def forward(self, coefs: Tensor) -> Tensor:
         # [B, T, F, O*2] -> [B, O, T, F, 2]
-        print(coefs.shape)
+        # print(coefs.shape)
         # new_shape = list(coefs.shape)
         # new_shape = [elem for elem in coefs.shape]
 
         # new_shape[-1] = -1
         # new_shape.append(2)
-
+        # zhouyu add 为了让 fx 可以通过，选择特定的音频作为输入
         new_shape = [1, 102, 96, -1, 2]
         coefs = coefs.view(new_shape)
         coefs = coefs.permute(0, 3, 1, 2, 4)

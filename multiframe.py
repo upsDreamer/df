@@ -176,7 +176,8 @@ class DF(MultiFrameModule):
         spec_u = self.spec_unfold(torch.view_as_complex(spec))
         coefs = torch.view_as_complex(coefs)
         spec_f = spec_u.narrow(-2, 0, self.num_freqs)
-        print(coefs.shape)  # torch.Size([1, 5, 102, 96])
+        # zhouyu add 为了让 fx 可以通过，选择特定的音频作为输入
+        # print(coefs.shape)  # torch.Size([1, 5, 102, 96])
         # coefs = coefs.view(coefs.shape[0], -1, self.frame_size, *coefs.shape[2:])
         coefs = coefs.view(1, -1, self.frame_size, 102, 96)
         if self.conj:
