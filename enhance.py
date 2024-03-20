@@ -62,10 +62,10 @@ def main(args):
     # model_test=andes_preprocessing(model)
     # model_test=add_idd(model_test)
     
-    # model_test = torch.fx.symbolic_trace(model)
+    model_test = torch.fx.symbolic_trace(model)
 
-    # print(model_test)
-    # exit(0)
+    print(model_test)
+    exit(0)
     suffix = suffix if args.suffix else None
     if args.output_dir is None:
         args.output_dir = "."

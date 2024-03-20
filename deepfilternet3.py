@@ -269,12 +269,12 @@ class DfOutputReshapeMF(nn.Module):
         # [B, T, F, O*2] -> [B, O, T, F, 2]
         print(coefs.shape)
         # new_shape = list(coefs.shape)
-        new_shape = [elem for elem in coefs.shape]
+        # new_shape = [elem for elem in coefs.shape]
 
-        new_shape[-1] = -1
-        new_shape.append(2)
+        # new_shape[-1] = -1
+        # new_shape.append(2)
 
-
+        new_shape = [1, 102, 96, -1, 2]
         coefs = coefs.view(new_shape)
         coefs = coefs.permute(0, 3, 1, 2, 4)
         return coefs
@@ -334,6 +334,10 @@ class DfDecoder(nn.Module):
         c = self.df_out(c)  # [B, T, F*O*2], O: df_order
         c = c.view(b, t, self.df_bins, self.df_out_ch) + c0  # [B, T, F, O*2]
         return c
+
+@torch.fx.wrap
+def assign_spec_m(spec_e, nb_df, spec_m):
+    spec_e[..., nb_df :, :] = spec_m[..., nb_df :, :]
 
 
 class DfNet(nn.Module):
@@ -449,7 +453,8 @@ class DfNet(nn.Module):
                 df_coefs = self.df_dec(emb, c0)
             df_coefs = self.df_out_transform(df_coefs)
             spec_e = self.df_op(spec.clone(), df_coefs)
-            spec_e[..., self.nb_df :, :] = spec_m[..., self.nb_df :, :]
+            #spec_e[..., self.nb_df :, :] = spec_m[..., self.nb_df :, :]
+            assign_spec_m(spec_e, self.nb_df, spec_m)
         else:
             df_coefs = torch.zeros((), device=spec.device)
             spec_e = spec_m

@@ -157,6 +157,10 @@ def df_real(spec: Tensor, coefs: Tensor) -> Tensor:
     return out
 
 
+@torch.fx.wrap
+def assign_spec(spec, num_freqs, spec_f):
+    spec[..., : num_freqs, :] = torch.view_as_real(spec_f)
+
 class DF(MultiFrameModule):
     """Deep Filtering."""
 
@@ -166,17 +170,22 @@ class DF(MultiFrameModule):
         super().__init__(num_freqs, frame_size, lookahead)
         self.conj = conj
 
+
+
     def forward(self, spec: Tensor, coefs: Tensor):
         spec_u = self.spec_unfold(torch.view_as_complex(spec))
         coefs = torch.view_as_complex(coefs)
         spec_f = spec_u.narrow(-2, 0, self.num_freqs)
-        coefs = coefs.view(coefs.shape[0], -1, self.frame_size, *coefs.shape[2:])
+        print(coefs.shape)  # torch.Size([1, 5, 102, 96])
+        # coefs = coefs.view(coefs.shape[0], -1, self.frame_size, *coefs.shape[2:])
+        coefs = coefs.view(1, -1, self.frame_size, 102, 96)
         if self.conj:
             coefs = coefs.conj()
         spec_f = df(spec_f, coefs)
         if self.training:
             spec = spec.clone()
-        spec[..., : self.num_freqs, :] = torch.view_as_real(spec_f)
+        #spec[..., : self.num_freqs, :] = torch.view_as_real(spec_f)
+        assign_spec(spec, self.num_freqs, spec_f)
         return spec
 
 
