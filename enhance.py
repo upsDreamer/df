@@ -214,7 +214,7 @@ def df_features(audio: Tensor, df: DF, nb_df: int, device=None) -> Tuple[Tensor,
         spec_feat = spec_feat.to(device)
     return spec, erb_feat, spec_feat
 
-
+import numpy as np
 @torch.no_grad()
 def enhance(
     model: nn.Module, df_state: DF, audio: Tensor, pad=True, atten_lim_db: Optional[float] = None
@@ -246,34 +246,79 @@ def enhance(
     nb_df = getattr(model, "nb_df", getattr(model, "df_bins", ModelParams().nb_df))
     spec, erb_feat, spec_feat = df_features(audio, df_state, nb_df, device=get_device())
 ####
-    spec_arr = torch.split(spec, 1, 2)
-    erb_feat_arr = torch.split(erb_feat, 1, 2)
-    spec_feat_arr = torch.split(spec_feat, 1, 2)
-    print("spec_arr = {} spec_arr[0] = {}".format(len(spec_arr), spec_arr[0].size()))
+    # spec_arr = torch.split(spec, 2, 2)   # tuple(Tensor(...))
+    # erb_feat_arr = torch.split(erb_feat, 2, 2)
+    # spec_feat_arr = torch.split(spec_feat, 2, 2)
+    # print("spec = ", spec.size())
+    # print("spec_arr = {} spec_arr[0] = {}".format(len(spec_arr), spec_arr[0].size()))
 
-    print("spec shape = ", spec.size())
-    print("erb_feat shape = ", erb_feat.size())
-    print("spec_feat shape = ", spec_feat.size())
+    # # print(spec[0][0].size())  # [T, 481, 2]
+    # # print(spec[0][0][0][:10])
+    # # print("-----------")
+    # # print(spec_arr[0][0][0].size())  # [1, 481, 2]
+    # # print(spec_arr[0][0][0][0][:10])
+    # # exit(0)
 
-    audio_list = []
-    for idx in range(len(spec_arr)):
-        cur_ehc = model(spec_arr[idx].clone(), erb_feat_arr[idx], spec_feat_arr[idx])[0].cpu()
-        cur_ehc = as_complex(cur_ehc.squeeze(1))
-        if atten_lim_db is not None and abs(atten_lim_db) > 0:
-            lim = 10 ** (-abs(atten_lim_db) / 20)
-            cur_ehc = as_complex(spec_arr[idx].squeeze(1).cpu()) * lim + cur_ehc * (1 - lim)
-        cur_audio = torch.as_tensor(df_state.synthesis(cur_ehc.numpy()))
-        # print("cur audio size = ", cur_audio.size())
-        audio_list.append(cur_audio)
+    # test_list = [spec_arr[0], spec_arr[1], spec_arr[2]]
+    # c = torch.cat(test_list, dim=2)
 
-    audio = torch.cat(audio_list, dim=1)
-    print("+++++++++++", audio.size())
-    return audio
+    # print("sssss = ", c.size())
+
+    # print("spec shape = ", spec.size())
+    # print("erb_feat shape = ", erb_feat.size())
+    # print("spec_feat shape = ", spec_feat.size())
+
+    # audio_list = []
+    # pos = 3
+    # for idx in range(len(spec_arr)):
+    #     cur_ehc = model(spec_arr[idx].clone(), erb_feat_arr[idx], spec_feat_arr[idx])[0].cpu()
+        
+    #     # if idx == pos:
+    #     #     # print("cur ehc = ", cur_ehc.size())
+    #     #     # print(cur_ehc[0][0][0][:10])
+    #     #     # print("cur spec = ", spec_arr[idx].size())
+    #     #     # print(spec_arr[idx][0][0][0][:10])
+    #     #     # print(erb_feat_arr[idx])
+    #     #     break
+    #     cur_ehc = as_complex(cur_ehc.squeeze(1))
+
+    #     if atten_lim_db is not None and abs(atten_lim_db) > 0:
+    #         lim = 10 ** (-abs(atten_lim_db) / 20)
+    #         cur_ehc = as_complex(spec_arr[idx].squeeze(1).cpu()) * lim + cur_ehc * (1 - lim)
+    #     cur_audio = torch.as_tensor(df_state.synthesis(cur_ehc.numpy()))
+    #     # print("cur audio size = ", cur_audio.size())
+    #     audio_list.append(cur_audio)
+    # """
+    # time_range = 6
+    # for idx in range(len(spec_arr)-time_range):
+    #     cur_spec_arr = torch.cat([spec_arr[idx+i] for i in range(time_range)], dim=2)
+    #     cur_erb_feat_arr = torch.cat([erb_feat_arr[idx+i] for i in range(time_range)], dim=2)
+    #     cur_spec_feat_arr = torch.cat([spec_feat_arr[idx+i] for i in range(time_range)], dim=2)
+        
+    #     cur_ehc = model(cur_spec_arr.clone(), cur_erb_feat_arr, cur_spec_feat_arr)[0].cpu()
+    #     # print("+++++++++++", cur_ehc.size())
+    #     cur_ehc = torch.split(cur_ehc, 1, 2)  # tuple(Tensor(...))
+        
+    #     cur_ehc = as_complex(cur_ehc[3].squeeze(1))
+    #     if atten_lim_db is not None and abs(atten_lim_db) > 0:
+    #         lim = 10 ** (-abs(atten_lim_db) / 20)
+    #         cur_ehc = as_complex(spec_arr[idx].squeeze(1).cpu()) * lim + cur_ehc * (1 - lim)
+    #     cur_audio = torch.as_tensor(df_state.synthesis(cur_ehc.numpy()))
+    #     # print("cur audio size = ", cur_audio.size())
+    #     audio_list.append(cur_audio)
+    # """
+    # audio = torch.cat(audio_list, dim=1)
+    # print("+++++++++++", audio.size())
+    # return audio
 ####
     
+    # print("spec shape", spec.size())
+    # print(spec[0][0][pos][:10])
+
     enhanced = model(spec.clone(), erb_feat, spec_feat)[0].cpu()
     print("enhanced shape = ", enhanced.size(), type(enhanced))
-
+    # print(enhanced[0][0][pos][:10])
+    
 
     enhanced = as_complex(enhanced.squeeze(1))
     print("enhanced squeeze 1 shape = ", enhanced.size())
