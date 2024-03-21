@@ -414,8 +414,8 @@ class DfNet(nn.Module):
             lsnr (Tensor): Local SNR estimate of shape [B, T, 1]
         """
         feat_spec = feat_spec.squeeze(1).permute(0, 3, 1, 2)
-        feat_erb = self.pad_feat(feat_erb)
-        feat_spec = self.pad_feat(feat_spec)
+        # feat_erb = self.pad_feat(feat_erb)
+        # feat_spec = self.pad_feat(feat_spec)
         e0, e1, e2, e3, emb, c0, lsnr = self.enc(feat_erb, feat_spec)
 
         if self.lsnr_droput:

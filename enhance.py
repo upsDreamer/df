@@ -215,6 +215,7 @@ def df_features(audio: Tensor, df: DF, nb_df: int, device=None) -> Tuple[Tensor,
     return spec, erb_feat, spec_feat
 
 import numpy as np
+from queue import *
 @torch.no_grad()
 def enhance(
     model: nn.Module, df_state: DF, audio: Tensor, pad=True, atten_lim_db: Optional[float] = None
@@ -246,70 +247,98 @@ def enhance(
     nb_df = getattr(model, "nb_df", getattr(model, "df_bins", ModelParams().nb_df))
     spec, erb_feat, spec_feat = df_features(audio, df_state, nb_df, device=get_device())
 ####
-    # spec_arr = torch.split(spec, 2, 2)   # tuple(Tensor(...))
-    # erb_feat_arr = torch.split(erb_feat, 2, 2)
-    # spec_feat_arr = torch.split(spec_feat, 2, 2)
-    # print("spec = ", spec.size())
-    # print("spec_arr = {} spec_arr[0] = {}".format(len(spec_arr), spec_arr[0].size()))
+    block_size = 1
+    spec_arr = torch.split(spec, block_size, 2)   # tuple(Tensor(...))
+    erb_feat_arr = torch.split(erb_feat, block_size, 2)
+    spec_feat_arr = torch.split(spec_feat, block_size, 2)
+    print("spec = ", spec.size())
+    print("spec_arr = {} spec_arr[0] = {}".format(len(spec_arr), spec_arr[0].size()))
 
-    # # print(spec[0][0].size())  # [T, 481, 2]
-    # # print(spec[0][0][0][:10])
-    # # print("-----------")
-    # # print(spec_arr[0][0][0].size())  # [1, 481, 2]
-    # # print(spec_arr[0][0][0][0][:10])
-    # # exit(0)
+    # print(spec[0][0].size())  # [T, 481, 2]
+    # print(spec[0][0][0][:10])
+    # print("-----------")
+    # print(spec_arr[0][0][0].size())  # [1, 481, 2]
+    # print(spec_arr[0][0][0][0][:10])
+    # exit(0)
 
-    # test_list = [spec_arr[0], spec_arr[1], spec_arr[2]]
-    # c = torch.cat(test_list, dim=2)
+    print("spec shape = ", spec.size())
+    print("erb_feat shape = ", erb_feat.size())
+    print("spec_feat shape = ", spec_feat.size())
+    
+    audio_list = []
+    ehc_list = []
+    pos = 3
+    for idx in range(len(spec_arr)):
+        cur_ehc = model(spec_arr[idx].clone(), erb_feat_arr[idx], spec_feat_arr[idx])[0].cpu()
+        cur_ehc = as_complex(cur_ehc.squeeze(1))
+        ehc_list.append(cur_ehc)
 
-    # print("sssss = ", c.size())
+    print(len(ehc_list))
+    print(ehc_list[0].size())
+    enhanced = torch.cat(ehc_list, dim=1)
+    print(enhanced.size())
+    # exit(0)
+    enhanced = as_complex(enhanced.squeeze(1))
+    print("enhanced squeeze 1 shape = ", enhanced.size())
+    print("atten_lim_db = ", atten_lim_db)
+    if atten_lim_db is not None and abs(atten_lim_db) > 0:
+        lim = 10 ** (-abs(atten_lim_db) / 20)
+        enhanced = as_complex(spec.squeeze(1).cpu()) * lim + enhanced * (1 - lim)
+    audio = torch.as_tensor(df_state.synthesis(enhanced.numpy()))
+    if pad:
+        # The frame size is equal to p.hop_size. Given a new frame, the STFT loop requires e.g.
+        # ceil((n_fft-hop)/hop). I.e. for 50% overlap, then hop=n_fft//2
+        # requires 1 additional frame lookahead; 75% requires 3 additional frames lookahead.
+        # Thus, the STFT/ISTFT loop introduces an algorithmic delay of n_fft - hop.
+        assert n_fft % hop == 0  # This is only tested for 50% and 75% overlap
+        d = n_fft - hop
+        audio = audio[:, d : orig_len + d]
+    print("audio size = ", audio.size())
+    return audio
 
-    # print("spec shape = ", spec.size())
-    # print("erb_feat shape = ", erb_feat.size())
-    # print("spec_feat shape = ", spec_feat.size())
 
-    # audio_list = []
-    # pos = 3
-    # for idx in range(len(spec_arr)):
-    #     cur_ehc = model(spec_arr[idx].clone(), erb_feat_arr[idx], spec_feat_arr[idx])[0].cpu()
+    """
+
+    # 实现滑动窗
+    cur_spec_q = Queue()
+    cur_erb_feat_q = Queue()
+    cur_spec_feat_q = Queue()
+    cur_ehc_q = Queue()
+    time_range = 3
+    for i in range(time_range):
+        cur_spec_q.put(torch.zeros(spec_arr[0].size()))
+        cur_erb_feat_q.put(torch.zeros(erb_feat_arr[0].size()))
+        cur_spec_feat_q.put(torch.zeros(spec_feat_arr[0].size()))
+        cur_ehc_q.put(torch.zeros(spec_arr[0].size()))
+    cur_ehc_q.get(0)
+    for idx in range(len(spec_arr)):
+        cur_spec_q.get(0)
+        cur_erb_feat_q.get(0)
+        cur_spec_feat_q.get(0)
+        cur_spec_q.put(spec_arr[idx])
+        cur_erb_feat_q.put(erb_feat_arr[idx])
+        cur_spec_feat_q.put(spec_feat_arr[idx])
+        cur_spec_arr = torch.cat([cur_spec_q.queue[i] for i in range(time_range)], dim=2)
+        cur_erb_feat_arr = torch.cat([cur_erb_feat_q.queue[i] for i in range(time_range)], dim=2)
+        cur_spec_feat_arr = torch.cat([cur_spec_feat_q.queue[i] for i in range(time_range)], dim=2)
         
-    #     # if idx == pos:
-    #     #     # print("cur ehc = ", cur_ehc.size())
-    #     #     # print(cur_ehc[0][0][0][:10])
-    #     #     # print("cur spec = ", spec_arr[idx].size())
-    #     #     # print(spec_arr[idx][0][0][0][:10])
-    #     #     # print(erb_feat_arr[idx])
-    #     #     break
-    #     cur_ehc = as_complex(cur_ehc.squeeze(1))
+        cur_ehc = model(cur_spec_arr.clone(), cur_erb_feat_arr, cur_spec_feat_arr)[0].cpu()
+        
+        cur_ehc_arr = torch.split(cur_ehc, 1, 2)  # tuple(Tensor(...))
+        
 
-    #     if atten_lim_db is not None and abs(atten_lim_db) > 0:
-    #         lim = 10 ** (-abs(atten_lim_db) / 20)
-    #         cur_ehc = as_complex(spec_arr[idx].squeeze(1).cpu()) * lim + cur_ehc * (1 - lim)
-    #     cur_audio = torch.as_tensor(df_state.synthesis(cur_ehc.numpy()))
-    #     # print("cur audio size = ", cur_audio.size())
-    #     audio_list.append(cur_audio)
-    # """
-    # time_range = 6
-    # for idx in range(len(spec_arr)-time_range):
-    #     cur_spec_arr = torch.cat([spec_arr[idx+i] for i in range(time_range)], dim=2)
-    #     cur_erb_feat_arr = torch.cat([erb_feat_arr[idx+i] for i in range(time_range)], dim=2)
-    #     cur_spec_feat_arr = torch.cat([spec_feat_arr[idx+i] for i in range(time_range)], dim=2)
-        
-    #     cur_ehc = model(cur_spec_arr.clone(), cur_erb_feat_arr, cur_spec_feat_arr)[0].cpu()
-    #     # print("+++++++++++", cur_ehc.size())
-    #     cur_ehc = torch.split(cur_ehc, 1, 2)  # tuple(Tensor(...))
-        
-    #     cur_ehc = as_complex(cur_ehc[3].squeeze(1))
-    #     if atten_lim_db is not None and abs(atten_lim_db) > 0:
-    #         lim = 10 ** (-abs(atten_lim_db) / 20)
-    #         cur_ehc = as_complex(spec_arr[idx].squeeze(1).cpu()) * lim + cur_ehc * (1 - lim)
-    #     cur_audio = torch.as_tensor(df_state.synthesis(cur_ehc.numpy()))
-    #     # print("cur audio size = ", cur_audio.size())
-    #     audio_list.append(cur_audio)
-    # """
-    # audio = torch.cat(audio_list, dim=1)
-    # print("+++++++++++", audio.size())
-    # return audio
+
+        cur_ehc = as_complex(cur_ehc[-1].squeeze(1))
+        if atten_lim_db is not None and abs(atten_lim_db) > 0:
+            lim = 10 ** (-abs(atten_lim_db) / 20)
+            cur_ehc = as_complex(spec_arr[idx].squeeze(1).cpu()) * lim + cur_ehc * (1 - lim)
+        cur_audio = torch.as_tensor(df_state.synthesis(cur_ehc.numpy()))
+        # print("cur audio size = ", cur_audio.size())
+        audio_list.append(cur_audio)
+    """
+    audio = torch.cat(audio_list, dim=1)
+    print("+++++++++++", audio.size())
+    return audio
 ####
     
     # print("spec shape", spec.size())
