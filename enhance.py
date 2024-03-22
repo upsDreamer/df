@@ -247,7 +247,7 @@ def enhance(
     nb_df = getattr(model, "nb_df", getattr(model, "df_bins", ModelParams().nb_df))
     spec, erb_feat, spec_feat = df_features(audio, df_state, nb_df, device=get_device())
 ####
-    block_size = 10
+    block_size = 1
     spec_arr = torch.split(spec, block_size, 2)   # tuple(Tensor(...))
     erb_feat_arr = torch.split(erb_feat, block_size, 2)
     spec_feat_arr = torch.split(spec_feat, block_size, 2)
@@ -265,13 +265,40 @@ def enhance(
     print("erb_feat shape = ", erb_feat.size())
     print("spec_feat shape = ", spec_feat.size())
     
-    audio_list = []
     ehc_list = []
-    pos = 3
+
+    # 实现滑动窗
+    cur_spec_q = Queue()
+    cur_erb_feat_q = Queue()
+    cur_spec_feat_q = Queue()
+    time_range = 6
+    for i in range(time_range):
+        cur_spec_q.put(torch.zeros(spec_arr[0].size()))
+        cur_erb_feat_q.put(torch.zeros(erb_feat_arr[0].size()))
+        cur_spec_feat_q.put(torch.zeros(spec_feat_arr[0].size()))
+
     for idx in range(len(spec_arr)):
-        cur_ehc = model(spec_arr[idx].clone(), erb_feat_arr[idx], spec_feat_arr[idx])[0].cpu()
-        cur_ehc = as_complex(cur_ehc.squeeze(1))
+        ### 实现滑动窗
+        cur_spec_q.get(0)
+        cur_erb_feat_q.get(0)
+        cur_spec_feat_q.get(0)
+        cur_spec_q.put(spec_arr[idx])
+        cur_erb_feat_q.put(erb_feat_arr[idx])
+        cur_spec_feat_q.put(spec_feat_arr[idx])
+        cur_spec_arr = torch.cat([cur_spec_q.queue[i] for i in range(time_range)], dim=2)
+        cur_erb_feat_arr = torch.cat([cur_erb_feat_q.queue[i] for i in range(time_range)], dim=2)
+        cur_spec_feat_arr = torch.cat([cur_spec_feat_q.queue[i] for i in range(time_range)], dim=2)
+        # import pdb; pdb.set_trace()
+        cur_ehc = model(cur_spec_arr.clone(), cur_erb_feat_arr, cur_spec_feat_arr)[0].cpu()
+        
+        cur_ehc_arr = torch.split(cur_ehc, 1, 2)  # tuple(Tensor(...))
+        cur_ehc = as_complex(cur_ehc_arr[-1].squeeze(1))
         ehc_list.append(cur_ehc)
+        ###
+
+        # cur_ehc = model(spec_arr[idx].clone(), erb_feat_arr[idx], spec_feat_arr[idx])[0].cpu()
+        # cur_ehc = as_complex(cur_ehc.squeeze(1))
+        # ehc_list.append(cur_ehc)
 
     print(len(ehc_list))
     print(ehc_list[0].size())
@@ -294,50 +321,6 @@ def enhance(
         d = n_fft - hop
         audio = audio[:, d : orig_len + d]
     print("audio size = ", audio.size())
-    return audio
-
-
-    """
-
-    # 实现滑动窗
-    cur_spec_q = Queue()
-    cur_erb_feat_q = Queue()
-    cur_spec_feat_q = Queue()
-    cur_ehc_q = Queue()
-    time_range = 3
-    for i in range(time_range):
-        cur_spec_q.put(torch.zeros(spec_arr[0].size()))
-        cur_erb_feat_q.put(torch.zeros(erb_feat_arr[0].size()))
-        cur_spec_feat_q.put(torch.zeros(spec_feat_arr[0].size()))
-        cur_ehc_q.put(torch.zeros(spec_arr[0].size()))
-    cur_ehc_q.get(0)
-    for idx in range(len(spec_arr)):
-        cur_spec_q.get(0)
-        cur_erb_feat_q.get(0)
-        cur_spec_feat_q.get(0)
-        cur_spec_q.put(spec_arr[idx])
-        cur_erb_feat_q.put(erb_feat_arr[idx])
-        cur_spec_feat_q.put(spec_feat_arr[idx])
-        cur_spec_arr = torch.cat([cur_spec_q.queue[i] for i in range(time_range)], dim=2)
-        cur_erb_feat_arr = torch.cat([cur_erb_feat_q.queue[i] for i in range(time_range)], dim=2)
-        cur_spec_feat_arr = torch.cat([cur_spec_feat_q.queue[i] for i in range(time_range)], dim=2)
-        
-        cur_ehc = model(cur_spec_arr.clone(), cur_erb_feat_arr, cur_spec_feat_arr)[0].cpu()
-        
-        cur_ehc_arr = torch.split(cur_ehc, 1, 2)  # tuple(Tensor(...))
-        
-
-
-        cur_ehc = as_complex(cur_ehc[-1].squeeze(1))
-        if atten_lim_db is not None and abs(atten_lim_db) > 0:
-            lim = 10 ** (-abs(atten_lim_db) / 20)
-            cur_ehc = as_complex(spec_arr[idx].squeeze(1).cpu()) * lim + cur_ehc * (1 - lim)
-        cur_audio = torch.as_tensor(df_state.synthesis(cur_ehc.numpy()))
-        # print("cur audio size = ", cur_audio.size())
-        audio_list.append(cur_audio)
-    """
-    audio = torch.cat(audio_list, dim=1)
-    print("+++++++++++", audio.size())
     return audio
 ####
     
