@@ -247,7 +247,7 @@ def enhance(
     nb_df = getattr(model, "nb_df", getattr(model, "df_bins", ModelParams().nb_df))
     spec, erb_feat, spec_feat = df_features(audio, df_state, nb_df, device=get_device())
 ####
-    block_size = 1
+    block_size = 10
     spec_arr = torch.split(spec, block_size, 2)   # tuple(Tensor(...))
     erb_feat_arr = torch.split(erb_feat, block_size, 2)
     spec_feat_arr = torch.split(spec_feat, block_size, 2)
